@@ -59,7 +59,6 @@ require "pathname"
 #      bucket => "boss_please_open_your_bucket" (required)
 #      size_file => 2048                        (optional)
 #      time_file => 5                           (optional)
-#      format => "plain"                        (optional)
 #      canned_acl => "private"                  (optional. Options are "private", "public_read", "public_read_write", "authenticated_read". Defaults to "private" )
 #      no_event_wait => 5                       (optional. Defines the number of time_file s3 upload events that may go with no events for the prefix, before cleaning up the watch on that)       
 #    }
@@ -114,6 +113,10 @@ class LogStash::Outputs::S3 < LogStash::Outputs::Base
 
   # Specify after how many interval of time_file, a prefix directory should be cleaned up locally if no events happing for it
   config :no_event_wait, :validate => :number, :default => 5
+  
+  # The version of the S3 signature hash to use. Normally uses the internal client default, can be explicitly
+  # specified here
+  config :signature_version, :validate => ['v2', 'v4']
 
   # Define tags to be appended to the file on the S3 bucket.
   #
@@ -122,7 +125,7 @@ class LogStash::Outputs::S3 < LogStash::Outputs::Base
   #
   # Will generate this file:
   # "ls.s3.logstash.local.2015-01-01T00.00.tag_elasticsearch.logstash.kibana.part0.txt"
-  # 
+  #
   config :tags, :validate => :array, :default => []
 
   # Exposed attributes for testing purpose.
@@ -132,13 +135,25 @@ class LogStash::Outputs::S3 < LogStash::Outputs::Base
 
   def aws_s3_config
     @logger.info("Registering s3 output", :bucket => @bucket, :endpoint_region => @region)
-    @s3 = AWS::S3.new(aws_options_hash)
+    @s3 = AWS::S3.new(full_options)
+  end
+
+  def full_options
+    aws_options_hash.merge(signature_options)
+  end
+
+  def signature_options
+    if @signature_version
+      {:s3_signature_version => @signature_version}
+    else
+      {}
+    end
   end
 
   def aws_service_endpoint(region)
     # Make the deprecated endpoint_region work
     # TODO: (ph) Remove this after deprecation.
-    
+
     if @endpoint_region
       region_to_use = @endpoint_region
     else
@@ -253,7 +268,7 @@ class LogStash::Outputs::S3 < LogStash::Outputs::Base
       File.delete(test_filename)
     end
   end
-  
+
   public
   def restore_from_crashes
     @logger.debug("S3: is attempting to verify previous crashes...")
@@ -326,7 +341,7 @@ class LogStash::Outputs::S3 < LogStash::Outputs::Base
 
   public
   def receive(event)
-    
+
     @codec.encode(event)
   end
 
@@ -397,7 +412,7 @@ class LogStash::Outputs::S3 < LogStash::Outputs::Base
       else
         @logger.debug("S3: tempfile file size report.", :tempfile_size => @tempfile[actualprefix].size, :size_file => @size_file)
       end
-    end 
+    end
 
     write_to_tempfile(encoded_event, actualprefix)
   end

@@ -31,6 +31,18 @@ describe LogStash::Outputs::S3 do
       s3 = LogStash::Outputs::S3.new(config.merge({ "region" => 'sa-east-1' }))
       expect(s3.aws_options_hash).to include(:s3_endpoint => "s3-sa-east-1.amazonaws.com")
     end
+
+    describe "signature version" do
+      it "should set the signature version if specified" do
+        s3 = LogStash::Outputs::S3.new(config.merge({ "signature_version" => 'v4' }))
+        expect(s3.full_options[:s3_signature_version]).to eql('v4')
+      end
+
+      it "should omit the option completely if not specified" do
+        s3 = LogStash::Outputs::S3.new(config)
+        expect(s3.full_options.has_key?(:s3_signature_version)).to eql(false)
+      end
+    end
   end
 
   describe "#register" do
@@ -70,24 +82,23 @@ describe LogStash::Outputs::S3 do
   describe "#generate_temporary_filename" do
     before do
       allow(Socket).to receive(:gethostname) { "logstash.local" }
-      allow(Time).to receive(:now) { Time.new('2015-10-09-09:00') }
     end
 
     it "should add tags to the filename if present" do
       config = minimal_settings.merge({ "tags" => ["elasticsearch", "logstash", "kibana"], "temporary_directory" => "/tmp/logstash"})
       s3 = LogStash::Outputs::S3.new(config)
-      expect(s3.get_temporary_filename).to eq("ls.s3.logstash.local.2015-01-01T00.00.tag_elasticsearch.logstash.kibana.part0.txt")
+      expect(s3.get_temporary_filename).to match(/^ls\.s3\.logstash\.local\.\d{4}-\d{2}\-\d{2}T\d{2}\.\d{2}\.tag_#{config["tags"].join("\.")}\.part0\.txt\Z/)
     end
 
     it "should not add the tags to the filename" do
       config = minimal_settings.merge({ "tags" => [], "temporary_directory" => "/tmp/logstash" })
       s3 = LogStash::Outputs::S3.new(config)
-      expect(s3.get_temporary_filename(3)).to eq("ls.s3.logstash.local.2015-01-01T00.00.part3.txt")
+      expect(s3.get_temporary_filename(3)).to match(/^ls\.s3\.logstash\.local\.\d{4}-\d{2}\-\d{2}T\d{2}\.\d{2}\.part3\.txt\Z/)
     end
 
     it "normalized the temp directory to include the trailing slash if missing" do
       s3 = LogStash::Outputs::S3.new(minimal_settings.merge({ "temporary_directory" => "/tmp/logstash" }))
-      expect(s3.get_temporary_filename).to eq("ls.s3.logstash.local.2015-01-01T00.00.part0.txt")
+      expect(s3.get_temporary_filename).to match(/^ls\.s3\.logstash\.local\.\d{4}-\d{2}\-\d{2}T\d{2}\.\d{2}\.part0\.txt\Z/)
     end
   end
 
@@ -303,8 +314,8 @@ describe LogStash::Outputs::S3 do
 
     it "doesn't skip events if using the time_file option", :tag => :slow do
       Stud::Temporary.directory do |temporary_directory|
-        time_file = rand(5..10)
-        number_of_rotation = rand(4..10)
+        time_file = rand(1..2)
+        number_of_rotation = rand(2..5)
 
         config = {
           "time_file" => time_file,
@@ -315,7 +326,7 @@ describe LogStash::Outputs::S3 do
 
         s3 = LogStash::Outputs::S3.new(minimal_settings.merge(config))
         # Make the test run in seconds intead of minutes..
-        allow(s3).to receive(:periodic_interval).and_return(time_file)
+        expect(s3).to receive(:periodic_interval).and_return(time_file)
         s3.register
 
         # Force to have a few files rotation
