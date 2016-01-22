@@ -60,7 +60,7 @@ require "pathname"
 #      size_file => 2048                        (optional)
 #      time_file => 5                           (optional)
 #      canned_acl => "private"                  (optional. Options are "private", "public_read", "public_read_write", "authenticated_read". Defaults to "private" )
-#      no_event_wait => 5                       (optional. Defines the number of time_file s3 upload events that may go with no events for the prefix, before cleaning up the watch on that)       
+#      no_event_wait => 5                       (optional. Defines the number of time_file s3 upload events that may go with no events for the prefix, before cleaning up the watch on that)
 #    }
 #
 class LogStash::Outputs::S3 < LogStash::Outputs::Base
@@ -113,7 +113,7 @@ class LogStash::Outputs::S3 < LogStash::Outputs::Base
 
   # Specify after how many interval of time_file, a prefix directory should be cleaned up locally if no events happing for it
   config :no_event_wait, :validate => :number, :default => 5
-  
+
   # The version of the S3 signature hash to use. Normally uses the internal client default, can be explicitly
   # specified here
   config :signature_version, :validate => ['v2', 'v4']
@@ -169,12 +169,12 @@ class LogStash::Outputs::S3 < LogStash::Outputs::Base
   def write_on_bucket(file)
     # find and use the bucket
     bucket = @s3.buckets[@bucket]
-    
+
     first = Pathname.new(@temporary_directory)
     second = Pathname.new(file)
 
     remote_filename_path = second.relative_path_from first
-    
+
     remote_filename = remote_filename_path.to_s
 
     @logger.debug("S3: ready to write file in bucket", :remote_filename => remote_filename, :bucket => @bucket)
@@ -201,10 +201,10 @@ class LogStash::Outputs::S3 < LogStash::Outputs::Base
       unless @tempfile[prefix].nil?
         @tempfile[prefix].close
       end
-   
+
       if @prefixes.include?(prefix)
          dirname = File.dirname(filename)
-         FileUtils.mkdir_p(dirname) unless File.directory?(dirname) 
+         FileUtils.mkdir_p(dirname) unless File.directory?(dirname)
          @logger.debug("S3: Creating a new temporary file", :filename => filename)
          @tempfile[prefix] = File.open(filename, "a")
       end
@@ -280,35 +280,35 @@ class LogStash::Outputs::S3 < LogStash::Outputs::Base
     end
   end
 
-  public 
+  public
   def need_cleanup?(prefix)
      return @empty_uploads[prefix] > @no_event_wait
   end
 
   public
   def move_file_to_bucket(file)
-    
+
     @logger.debug("S3: moving to bucket ", :file => file)
 
     basepath = Pathname.new @temporary_directory
     dirname = Pathname.new File.dirname(file)
-    prefix = dirname.relative_path_from(basepath).to_s
+    prefix = "#{dirname.relative_path_from(basepath).to_s}/"
     @logger.debug("S3: moving the file for prefix", :prefix => prefix)
 
     if !File.zero?(file)
       if @prefixes.include? prefix
-         @empty_uploads[prefix] = 0 
+         @empty_uploads[prefix] = 0
       end
       write_on_bucket(file)
       @logger.debug("S3: file was put on the upload thread", :filename => File.basename(file), :bucket => @bucket)
-    else       
+    else
       if @prefixes.include? prefix
-         @empty_uploads[prefix] += 1                
-      end      
+         @empty_uploads[prefix] += 1
+      end
     end
 
     @logger.debug("S3: empty_uploads for the prefix ", :prefix => prefix, :empty_uploads => @empty_uploads[prefix])
-   
+
     begin
       File.delete(file)
     rescue Errno::ENOENT
@@ -347,7 +347,7 @@ class LogStash::Outputs::S3 < LogStash::Outputs::Base
 
   public
 
-  def rotate_events_log(prefix) 
+  def rotate_events_log(prefix)
     @file_rotation_lock[prefix].synchronize do
        @tempfile[prefix].size > @size_file
     end
@@ -360,7 +360,7 @@ class LogStash::Outputs::S3 < LogStash::Outputs::Base
 
   public
   def write_to_tempfile(event, prefix)
-    
+
     begin
       @logger.debug("S3: put event into tempfile ", :tempfile => File.basename(@tempfile[prefix]))
 
@@ -377,7 +377,7 @@ class LogStash::Outputs::S3 < LogStash::Outputs::Base
   def close
     shutdown_upload_workers
     @periodic_rotation_thread.stop! if @periodic_rotation_thread
-    
+
     @prefixes.each do |prefix|
        @file_rotation_lock[prefix].synchronize do
          @tempfile[prefix].close unless @tempfile[prefix].nil? && @tempfile[prefix].closed?
@@ -398,8 +398,8 @@ class LogStash::Outputs::S3 < LogStash::Outputs::Base
        @file_rotation_lock[actualprefix] = Mutex.new
        @prefixes.add(actualprefix)
        reset_page_counter(actualprefix)
-       create_temporary_file(actualprefix)       
-       @empty_uploads[actualprefix] = 0       
+       create_temporary_file(actualprefix)
+       @empty_uploads[actualprefix] = 0
     end
 
     if write_events_to_multiple_files?
@@ -440,7 +440,7 @@ class LogStash::Outputs::S3 < LogStash::Outputs::Base
       @file_rotation_lock[prefix].synchronize do
          @tempfile[prefix].close
          Dir.foreach(path) {|f| fn = File.join(path, f); File.delete(fn) if f != '.' && f != '..'}
-         FileUtils.remove_dir(path)      
+         FileUtils.remove_dir(path)
          @prefixes.delete(prefix)
          @tempfile.delete(prefix)
          @empty_uploads[prefix] = 0
@@ -491,12 +491,12 @@ class LogStash::Outputs::S3 < LogStash::Outputs::Base
   private
   def delete_on_bucket(filename)
     bucket = @s3.buckets[@bucket]
-    
+
     first = Pathname.new @temporary_directory
     second = Pathname.new filename
 
     remote_filename_path = second.relative_path_from first
-    
+
     remote_filename = remote_filename_path.to_s
 
     @logger.debug("S3: delete file from bucket", :remote_filename => remote_filename, :bucket => @bucket)
